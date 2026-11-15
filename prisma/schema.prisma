@@ -1,0 +1,186 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model ElderlyProfile {
+  id                  String             @id @default(uuid())
+  fullName            String
+  preferredName       String
+  age                 Int
+  gender              String
+  avatarUrl           String?
+  bloodType           String             @default("O+")
+  allergies           String             @default("None reported")
+  emergencyPhone      String
+  primaryDoctor       String
+  doctorPhone         String
+  hospitalPreference  String
+  elderlyPasscode     String             @default("1234")
+  familyPasscode      String             @default("4321")
+  caretakerPasscode   String             @default("9999")
+  accessibilityVoice  Boolean            @default(true)
+  highContrast        Boolean            @default(false)
+  fontSizeMode        String             @default("normal") // normal, large, extra-large
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  careCircle          CareCircleMember[]
+  medications         Medication[]
+  doseLogs            DoseScheduleLog[]
+  appointments        Appointment[]
+  routines            HealthcareRoutine[]
+  vitalLogs           VitalLog[]
+  loveNotes           LoveNote[]
+  notifications       NotificationLog[]
+}
+
+model CareCircleMember {
+  id                  String          @id @default(uuid())
+  profileId           String
+  name                String
+  role                String          // FAMILY, CARETAKER, PRIMARY_CAREGIVER, DOCTOR
+  relation            String          // Daughter, Son, Visiting Nurse, etc.
+  email               String
+  phone               String?
+  notifyMissedDoses   Boolean         @default(true)
+  notifyUpcomingDoses Boolean         @default(false)
+  notifyAppointments  Boolean         @default(true)
+  notifyEmergencySOS  Boolean         @default(true)
+  createdAt           DateTime        @default(now())
+
+  profile             ElderlyProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model Medication {
+  id                  String             @id @default(uuid())
+  profileId           String
+  name                String
+  brandName           String?
+  dosage              String
+  form                String             // Tablet, Capsule, Liquid, Inhaler, Drops, Injection
+  color               String             // White, Blue, Yellow, Pink, Red, Green, Orange
+  shape               String             // Round, Oval, Oblong, Capsule
+  instructions        String
+  purpose             String
+  prescribingDoctor   String?
+  totalPills          Int                @default(30)
+  remainingPills      Int                @default(30)
+  refillThreshold     Int                @default(7)
+  refillPharmacy      String?
+  pharmacyPhone       String?
+  active              Boolean            @default(true)
+  scheduleTimes       String             // JSON string e.g. '["08:00", "20:00"]'
+  scheduleType        String             @default("DAILY") // DAILY, AS_NEEDED, INTERVAL
+  daysOfWeek          String?            // JSON string e.g. '["Mon", "Wed", "Fri"]'
+  createdAt           DateTime           @default(now())
+  updatedAt           DateTime           @updatedAt
+
+  profile             ElderlyProfile     @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  doseLogs            DoseScheduleLog[]
+}
+
+model DoseScheduleLog {
+  id                  String          @id @default(uuid())
+  profileId           String
+  medicationId        String
+  scheduledDate       String          // YYYY-MM-DD
+  scheduledTime       String          // HH:mm
+  status              String          @default("PENDING") // PENDING, TAKEN, MISSED, SNOOZED, SKIPPED
+  takenAt             DateTime?
+  takenBy             String?
+  snoozedUntil        DateTime?
+  missedAlertSent     Boolean         @default(false)
+  reminderAlertSent   Boolean         @default(false)
+  notes               String?
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  profile             ElderlyProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+  medication          Medication      @relation(fields: [medicationId], references: [id], onDelete: Cascade)
+}
+
+model Appointment {
+  id                  String          @id @default(uuid())
+  profileId           String
+  doctorName          String
+  specialty           String
+  clinicName          String
+  address             String
+  contactPhone        String?
+  appointmentDate     DateTime
+  status              String          @default("UPCOMING") // UPCOMING, COMPLETED, CANCELLED, RESCHEDULED
+  purpose             String
+  preVisitNotes       String?
+  postVisitSummary    String?
+  companionRequired   Boolean         @default(true)
+  companionName       String?
+  transportArranged   Boolean         @default(false)
+  reminderSent24h     Boolean         @default(false)
+  reminderSent2h      Boolean         @default(false)
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+
+  profile             ElderlyProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model HealthcareRoutine {
+  id                  String          @id @default(uuid())
+  profileId           String
+  title               String
+  category            String          // VITAL_CHECK, EXERCISE, HYDRATION, MENTAL_WELLNESS, PHYSIOTHERAPY
+  targetTime          String?         // e.g. "09:00"
+  frequency           String          @default("DAILY")
+  notes               String?
+  completedToday      Boolean         @default(false)
+  lastCompletedAt     DateTime?
+  createdAt           DateTime        @default(now())
+
+  profile             ElderlyProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model VitalLog {
+  id                  String          @id @default(uuid())
+  profileId           String
+  type                String          // BLOOD_PRESSURE, BLOOD_SUGAR, HEART_RATE, WEIGHT, OXYGEN, TEMPERATURE
+  value               String
+  unit                String
+  measuredAt          DateTime        @default(now())
+  measuredBy          String          @default("Self")
+  status              String          @default("NORMAL") // NORMAL, ELEVATED, CRITICAL
+  notes               String?
+
+  profile             ElderlyProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model LoveNote {
+  id                  String          @id @default(uuid())
+  profileId           String
+  senderName          String
+  senderRole          String          // FAMILY, CARETAKER
+  message             String
+  mediaEmoji          String          @default("❤️")
+  isRead              Boolean         @default(false)
+  createdAt           DateTime        @default(now())
+
+  profile             ElderlyProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}
+
+model NotificationLog {
+  id                  String          @id @default(uuid())
+  profileId           String
+  recipientEmail      String
+  recipientName       String
+  type                String          // MISSED_DOSE, UPCOMING_DOSE, APPOINTMENT_REMINDER, REFILL_ALERT, SOS_EMERGENCY
+  subject             String
+  content             String
+  status              String          @default("SENT") // SENT, SIMULATED, FAILED
+  etherealUrl         String?
+  sentAt              DateTime        @default(now())
+
+  profile             ElderlyProfile  @relation(fields: [profileId], references: [id], onDelete: Cascade)
+}

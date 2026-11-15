@@ -1,0 +1,94 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f8fafc;
+  --foreground: #0f172a;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* High Contrast Mode for Senior Accessibility */
+.high-contrast {
+  --background: #000000 !important;
+  --foreground: #ffffff !important;
+}
+
+.high-contrast body {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+.high-contrast .bg-white {
+  background-color: #121212 !important;
+  color: #ffffff !important;
+  border-color: #facc15 !important;
+}
+
+.high-contrast .text-slate-600,
+.high-contrast .text-slate-500,
+.high-contrast .text-slate-400 {
+  color: #e2e8f0 !important;
+}
+
+.high-contrast button {
+  border-width: 2px !important;
+}
+
+/* Senior Font Size Modes */
+.font-mode-large {
+  font-size: 1.15rem;
+}
+.font-mode-large h1 {
+  font-size: 2.25rem;
+}
+.font-mode-large h2 {
+  font-size: 1.75rem;
+}
+.font-mode-large h3 {
+  font-size: 1.5rem;
+}
+
+.font-mode-extra-large {
+  font-size: 1.35rem;
+}
+.font-mode-extra-large h1 {
+  font-size: 2.75rem;
+}
+.font-mode-extra-large h2 {
+  font-size: 2.15rem;
+}
+.font-mode-extra-large h3 {
+  font-size: 1.85rem;
+}
+
+/* Custom Pill Visuals */
+.pill-shape-round {
+  width: 32px;
+  height: 32px;
+  border-radius: 9999px;
+}
+
+.pill-shape-oval {
+  width: 42px;
+  height: 26px;
+  border-radius: 9999px;
+}
+
+.pill-shape-oblong {
+  width: 46px;
+  height: 22px;
+  border-radius: 6px;
+}
+
+.pill-shape-capsule {
+  width: 44px;
+  height: 22px;
+  border-radius: 9999px;
+}
