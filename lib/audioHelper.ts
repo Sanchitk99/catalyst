@@ -1,4 +1,4 @@
-// Text-to-Speech and Web Audio synthesizers for accessible elder feedback
+// Text-to-Speech, Speech Recognition, and Web Audio synthesizers for accessible elder care
 
 export function speakText(text: string) {
   if (typeof window === "undefined" || !("speechSynthesis" in window)) {
@@ -8,7 +8,7 @@ export function speakText(text: string) {
   try {
     window.speechSynthesis.cancel(); // Cancel any ongoing speech
     const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 0.9; // Slightly slower, calm cadence for elderly clarity
+    utterance.rate = 0.88; // Slightly slower, calm cadence for elderly clarity
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
     window.speechSynthesis.speak(utterance);
@@ -27,13 +27,15 @@ export function playSuccessChime() {
   if (typeof window === "undefined") return;
 
   try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) return;
 
     const ctx = new AudioContextClass();
     const now = ctx.currentTime;
 
-    // Pleasant two-tone chime (Major third: C5 -> E5 -> G5)
+    // Pleasant three-tone chime (C5 -> E5 -> G5)
     const playTone = (freq: number, start: number, duration: number) => {
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
@@ -41,7 +43,7 @@ export function playSuccessChime() {
       osc.type = "sine";
       osc.frequency.setValueAtTime(freq, start);
 
-      gain.gain.setValueAtTime(0.2, start);
+      gain.gain.setValueAtTime(0.25, start);
       gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
 
       osc.connect(gain);
@@ -63,7 +65,9 @@ export function playEmergencyAlarm() {
   if (typeof window === "undefined") return;
 
   try {
-    const AudioContextClass = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+    const AudioContextClass =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!AudioContextClass) return;
 
     const ctx = new AudioContextClass();
@@ -89,5 +93,92 @@ export function playEmergencyAlarm() {
     osc.stop(now + 1.0);
   } catch (e) {
     console.warn("Emergency sound error:", e);
+  }
+}
+
+// Two-way Voice Recognition Listener
+export interface VoiceCommandHandlers {
+  onTakeNextDose?: () => void;
+  onReadSchedule?: () => void;
+  onLogWater?: () => void;
+  onTriggerSOS?: () => void;
+  onTranscript?: (text: string) => void;
+  onError?: (err: string) => void;
+  onEnd?: () => void;
+}
+
+export function startVoiceRecognition(handlers: VoiceCommandHandlers) {
+  if (typeof window === "undefined") return null;
+
+  // Type definitions for SpeechRecognition API
+  const SpeechRec =
+    (window as unknown as { SpeechRecognition?: new () => any; webkitSpeechRecognition?: new () => any })
+      .SpeechRecognition ||
+    (window as unknown as { webkitSpeechRecognition?: new () => any }).webkitSpeechRecognition;
+
+  if (!SpeechRec) {
+    handlers.onError?.("Voice speech recognition is not supported in this browser.");
+    return null;
+  }
+
+  try {
+    const recognition = new SpeechRec();
+    recognition.continuous = false;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript.toLowerCase().trim();
+      handlers.onTranscript?.(transcript);
+
+      // Natural language command parser
+      if (
+        transcript.includes("took") ||
+        transcript.includes("take") ||
+        transcript.includes("done") ||
+        transcript.includes("finished pills")
+      ) {
+        speakText("Marking your medication as taken. Good job!");
+        handlers.onTakeNextDose?.();
+      } else if (
+        transcript.includes("what") ||
+        transcript.includes("schedule") ||
+        transcript.includes("next") ||
+        transcript.includes("today")
+      ) {
+        handlers.onReadSchedule?.();
+      } else if (
+        transcript.includes("water") ||
+        transcript.includes("drink") ||
+        transcript.includes("hydrated")
+      ) {
+        speakText("Great job staying hydrated! Recording a glass of water.");
+        handlers.onLogWater?.();
+      } else if (
+        transcript.includes("emergency") ||
+        transcript.includes("help") ||
+        transcript.includes("call doctor") ||
+        transcript.includes("sos")
+      ) {
+        speakText("Activating Emergency Assistance beacon now!");
+        handlers.onTriggerSOS?.();
+      } else {
+        speakText(`I heard: ${transcript}. You can say 'I took my medicine', 'What is next', 'Water', or 'Emergency'.`);
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      handlers.onError?.(event.error || "Speech recognition error");
+    };
+
+    recognition.onend = () => {
+      handlers.onEnd?.();
+    };
+
+    recognition.start();
+    return recognition;
+  } catch (e) {
+    handlers.onError?.("Failed to start voice listener.");
+    return null;
   }
 }

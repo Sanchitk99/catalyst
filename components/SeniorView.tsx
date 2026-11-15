@@ -6,7 +6,8 @@ import {
   CheckCircle,
   Clock,
   Volume2,
-  Calendar,
+  Mic,
+  MicOff,
   AlertCircle,
   Heart,
   Droplet,
@@ -15,9 +16,17 @@ import {
   Sparkles,
   PhoneCall,
   ShieldAlert,
+  Smile,
+  AlertTriangle,
+  GlassWater,
 } from "lucide-react";
 import { ProfileData, DoseScheduleData, HealthcareRoutineData, LoveNoteData } from "@/types";
-import { speakText, playSuccessChime } from "@/lib/audioHelper";
+import {
+  speakText,
+  playSuccessChime,
+  startVoiceRecognition,
+  stopSpeaking,
+} from "@/lib/audioHelper";
 import { formatTime, getDoseCategory } from "@/lib/utils";
 
 interface SeniorViewProps {
@@ -42,6 +51,13 @@ export default function SeniorView({
   voiceEnabled,
 }: SeniorViewProps) {
   const [takingDoseId, setTakingDoseId] = useState<string | null>(null);
+  const [isListening, setIsListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null);
+
+  // Wellness State
+  const [selectedMood, setSelectedMood] = useState<string>("GOOD");
+  const [waterGlasses, setWaterGlasses] = useState<number>(4);
+  const [wellnessFeedback, setWellnessFeedback] = useState<string | null>(null);
 
   const handleDoseClick = async (dose: DoseScheduleData) => {
     if (dose.status === "TAKEN") return;
@@ -77,6 +93,100 @@ export default function SeniorView({
     speakText(text);
   };
 
+  // Toggle Two-Way Voice Recognition
+  const handleToggleVoiceListener = () => {
+    if (isListening) {
+      setIsListening(false);
+      return;
+    }
+
+    setIsListening(true);
+    setVoiceTranscript("Listening... Speak now");
+    speakText("I am listening. Tell me what you need, Nana.");
+
+    startVoiceRecognition({
+      onTranscript: (text) => {
+        setVoiceTranscript(text);
+      },
+      onTakeNextDose: () => {
+        const nextPending = doses.find((d) => d.status === "PENDING" || d.status === "MISSED");
+        if (nextPending) {
+          handleDoseClick(nextPending);
+        } else {
+          speakText("All medications for today have already been marked as taken! You're doing wonderful.");
+        }
+        setIsListening(false);
+      },
+      onReadSchedule: () => {
+        const pending = doses.filter((d) => d.status === "PENDING");
+        if (pending.length > 0) {
+          const names = pending.map((p) => p.medication.name).join(", ");
+          speakText(`You have ${pending.length} medications remaining today: ${names}.`);
+        } else {
+          speakText("All scheduled medications for today are completed!");
+        }
+        setIsListening(false);
+      },
+      onLogWater: () => {
+        handleWaterGlassAdd();
+        setIsListening(false);
+      },
+      onTriggerSOS: () => {
+        onTriggerSOS();
+        setIsListening(false);
+      },
+      onError: (err) => {
+        setVoiceTranscript(`Voice error: ${err}`);
+        setIsListening(false);
+      },
+      onEnd: () => {
+        setIsListening(false);
+      },
+    });
+  };
+
+  const handleMoodSelect = async (mood: string) => {
+    setSelectedMood(mood);
+    try {
+      if (profile) {
+        await fetch("/api/wellness", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profileId: profile.id, mood }),
+        });
+      }
+      if (mood === "DIZZY" || mood === "UNWELL") {
+        speakText("We have notified your care circle that you are feeling unsteady. Please sit comfortably and rest.");
+        setWellnessFeedback("⚠️ Care circle notified to check in on you shortly.");
+      } else {
+        speakText(`Glad you are feeling ${mood.toLowerCase()}!`);
+        setWellnessFeedback("✓ Mood check-in logged");
+      }
+      setTimeout(() => setWellnessFeedback(null), 4000);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleWaterGlassAdd = async () => {
+    const newCount = Math.min(8, waterGlasses + 1);
+    setWaterGlasses(newCount);
+    playSuccessChime();
+    speakText(`Water logged! You've had ${newCount} of 8 glasses today.`);
+
+    try {
+      if (profile) {
+        await fetch("/api/wellness", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ profileId: profile.id, waterGlasses: newCount }),
+        });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   // Group doses into categories
   const categories = [
     { key: "Morning", title: "Morning Doses", timeHint: "With or after breakfast", icon: "🌅" },
@@ -85,7 +195,6 @@ export default function SeniorView({
     { key: "Bedtime / Night", title: "Nighttime Doses", timeHint: "Before going to sleep", icon: "🌙" },
   ];
 
-  // Map pill colors to Tailwind styles
   const pillColorStyles: Record<string, string> = {
     White: "bg-white border-2 border-slate-300 shadow-sm",
     Pink: "bg-rose-300 border-2 border-rose-400",
@@ -115,12 +224,24 @@ export default function SeniorView({
               Good day, {profile?.preferredName || profile?.fullName || "Eleanor"}! 🌸
             </h2>
             <p className="mt-2 text-blue-100 text-base max-w-xl">
-              Here is your daily healthcare schedule. Take your time, tap any pill to mark it as taken, or click the speaker to hear instructions read aloud.
+              Here is your daily healthcare schedule. Take your time, tap any pill to mark it as taken, or use your voice to tell CareRing what you need.
             </p>
           </div>
 
-          {/* Quick Voice Prompt & Emergency */}
+          {/* Voice Assistant Controls */}
           <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <button
+              onClick={handleToggleVoiceListener}
+              className={`px-5 py-3.5 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 backdrop-blur transition border shadow-lg ${
+                isListening
+                  ? "bg-rose-600 text-white border-rose-400 animate-pulse"
+                  : "bg-white/20 hover:bg-white/30 text-white border-white/20"
+              }`}
+            >
+              {isListening ? <MicOff className="w-5 h-5 text-yellow-300" /> : <Mic className="w-5 h-5" />}
+              <span>{isListening ? "Listening... Speak" : "Talk to Care Companion"}</span>
+            </button>
+
             <button
               onClick={() =>
                 speakText(
@@ -129,16 +250,113 @@ export default function SeniorView({
                   } medications remaining today. Your family Marcus and Chloe have sent you warm messages.`
                 )
               }
-              className="px-5 py-3 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-bold text-sm flex items-center justify-center gap-2 backdrop-blur transition border border-white/20"
+              className="px-5 py-3.5 rounded-2xl bg-white/20 hover:bg-white/30 text-white font-bold text-sm flex items-center justify-center gap-2 backdrop-blur transition border border-white/20"
             >
               <Volume2 className="w-5 h-5" />
-              <span>Read My Day Aloud</span>
+              <span>Read Day Aloud</span>
             </button>
           </div>
         </div>
 
-        {/* Decorative background circle */}
+        {voiceTranscript && (
+          <div className="mt-4 p-3 rounded-2xl bg-black/30 backdrop-blur border border-white/20 text-xs font-mono text-yellow-200">
+            🎙️ Voice: {voiceTranscript}
+          </div>
+        )}
+
         <div className="absolute -right-12 -bottom-12 w-64 h-64 rounded-full bg-white/5 pointer-events-none" />
+      </div>
+
+      {/* Daily Check-In & Hydration Card */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Mood & Well-being Check-in */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Smile className="w-5 h-5 text-amber-500" />
+                <span>How Are You Feeling Today, Nana?</span>
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Tap your current feeling so Marcus and your visiting nurse know how you are doing.
+            </p>
+
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { key: "GREAT", label: "Great", emoji: "😊", bg: "bg-emerald-50 border-emerald-300" },
+                { key: "GOOD", label: "Good", emoji: "🙂", bg: "bg-blue-50 border-blue-300" },
+                { key: "TIRED", label: "Tired", emoji: "🥱", bg: "bg-amber-50 border-amber-300" },
+                { key: "DIZZY", label: "Dizzy", emoji: "😵", bg: "bg-rose-50 border-rose-300" },
+              ].map((m) => (
+                <button
+                  key={m.key}
+                  onClick={() => handleMoodSelect(m.key)}
+                  className={`p-3 rounded-2xl border-2 text-center transition flex flex-col items-center justify-center gap-1 ${
+                    selectedMood === m.key
+                      ? "border-blue-600 bg-blue-100/70 font-bold scale-105 shadow-sm"
+                      : "border-slate-200 bg-slate-50 hover:bg-slate-100"
+                  }`}
+                >
+                  <span className="text-3xl">{m.emoji}</span>
+                  <span className="text-xs font-semibold text-slate-800">{m.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {wellnessFeedback && (
+              <p className="mt-3 text-xs font-bold text-blue-700 bg-blue-50 p-2 rounded-xl border border-blue-200">
+                {wellnessFeedback}
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Daily Hydration Tracker */}
+        <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                <Droplet className="w-5 h-5 text-sky-500" />
+                <span>Daily Hydration Goal (8 Glasses)</span>
+              </h3>
+              <span className="text-sm font-black text-sky-600">
+                {waterGlasses} / 8 Glasses
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mb-4">
+              Proper hydration keeps circulation steady and helps medications absorb smoothly.
+            </p>
+
+            <div className="grid grid-cols-8 gap-2">
+              {[1, 2, 3, 4, 5, 6, 7, 8].map((num) => (
+                <div
+                  key={num}
+                  onClick={handleWaterGlassAdd}
+                  className={`h-14 rounded-2xl border-2 cursor-pointer transition flex flex-col items-center justify-center ${
+                    num <= waterGlasses
+                      ? "bg-sky-500 border-sky-600 text-white shadow-sm"
+                      : "bg-slate-50 border-slate-200 text-slate-300 hover:border-sky-300"
+                  }`}
+                  title={`Glass #${num}`}
+                >
+                  <Droplet className="w-5 h-5 fill-current" />
+                  <span className="text-[10px] font-bold mt-0.5">{num}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+            <span className="text-xs text-slate-500">Tap any glass to record water</span>
+            <button
+              onClick={handleWaterGlassAdd}
+              className="px-3.5 py-1.5 rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-800 font-bold text-xs transition"
+            >
+              +1 Glass Drank
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Love Notes from Family Carousel / Grid */}
@@ -392,7 +610,7 @@ export default function SeniorView({
           <div>
             <h4 className="text-lg font-bold text-rose-950">Need Immediate Help?</h4>
             <p className="text-xs text-rose-800 max-w-md">
-              Tap the red SOS button anytime to instantly alert family members, your caretaker, and emergency contacts.
+              Tap the red SOS button anytime or say &quot;Emergency&quot; to instantly alert family members, your caretaker, and emergency services.
             </p>
           </div>
         </div>

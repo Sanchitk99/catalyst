@@ -16,6 +16,8 @@ import {
   X,
   ShieldAlert,
   Users,
+  Search,
+  Filter,
 } from "lucide-react";
 import { NotificationLogData, ProfileData, CareCircleMemberData } from "@/types";
 
@@ -40,6 +42,10 @@ export default function NotificationView({
   const [triggeringType, setTriggeringType] = useState<string | null>(null);
   const [schedulerResult, setSchedulerResult] = useState<string | null>(null);
   const [selectedPreview, setSelectedPreview] = useState<NotificationLogData | null>(null);
+
+  // Search & Filter State
+  const [searchTerm, setSearchTerm] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("ALL");
 
   const handleRunScheduler = async () => {
     setRunningScheduler(true);
@@ -93,6 +99,21 @@ export default function NotificationView({
     }
   };
 
+  // Filtered notifications
+  const filteredNotifications = notifications.filter((notif) => {
+    const matchesSearch =
+      notif.recipientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      notif.recipientEmail.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      notif.subject.toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesType = typeFilter === "ALL" || notif.type === typeFilter;
+    return matchesSearch && matchesType;
+  });
+
+  const totalSent = notifications.length;
+  const missedCount = notifications.filter((n) => n.type === "MISSED_DOSE").length;
+  const apptCount = notifications.filter((n) => n.type === "APPOINTMENT_REMINDER").length;
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto pb-16">
       {/* Header Banner */}
@@ -129,6 +150,30 @@ export default function NotificationView({
             <span>{schedulerResult}</span>
           </div>
         )}
+      </div>
+
+      {/* Metrics Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-slate-400 font-bold uppercase text-[10px]">Total Emails Sent</span>
+          <p className="text-2xl font-black text-slate-900 mt-1">{totalSent}</p>
+          <span className="text-[11px] text-emerald-600 font-semibold">100% Delivery Success</span>
+        </div>
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-slate-400 font-bold uppercase text-[10px]">Missed Dose Alerts</span>
+          <p className="text-2xl font-black text-rose-600 mt-1">{missedCount}</p>
+          <span className="text-[11px] text-slate-500">Escalated to Care Circle</span>
+        </div>
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-slate-400 font-bold uppercase text-[10px]">Appointment Notices</span>
+          <p className="text-2xl font-black text-emerald-600 mt-1">{apptCount}</p>
+          <span className="text-[11px] text-slate-500">24-hr advance reminders</span>
+        </div>
+        <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+          <span className="text-slate-400 font-bold uppercase text-[10px]">Active Subscriptions</span>
+          <p className="text-2xl font-black text-indigo-600 mt-1">{careCircle.length}</p>
+          <span className="text-[11px] text-slate-500">Verified recipients</span>
+        </div>
       </div>
 
       {/* Interactive Proactive Dispatch Testing Panel */}
@@ -232,28 +277,65 @@ export default function NotificationView({
         </div>
       </div>
 
-      {/* Dispatched Emails Audit Trail */}
-      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
-        <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+      {/* Dispatched Emails Audit Trail with Search & Filter */}
+      <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-100">
           <div>
             <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
               <Mail className="w-5 h-5 text-amber-600" />
-              <span>Proactive Notification Audit Log ({notifications.length})</span>
+              <span>Proactive Notification Audit Log ({filteredNotifications.length})</span>
             </h3>
             <p className="text-xs text-slate-500">
               Complete verifiable record of all proactive email dispatches with viewable HTML previews
             </p>
           </div>
 
-          <button
-            onClick={onRefreshNotifications}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition"
-          >
-            <RefreshCw className="w-3.5 h-3.5" />
-            <span>Refresh</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onRefreshNotifications}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold text-xs transition"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh</span>
+            </button>
+          </div>
         </div>
 
+        {/* Filter and Search Bar */}
+        <div className="flex flex-col sm:flex-row items-center gap-3">
+          <div className="relative flex-1 w-full">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="Search by recipient name, email address, or subject line..."
+              className="w-full pl-9 pr-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto text-xs">
+            <span className="text-slate-400 text-[11px] font-semibold flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5" />
+              <span>Type:</span>
+            </span>
+            {["ALL", "MISSED_DOSE", "UPCOMING_DOSE", "APPOINTMENT_REMINDER", "SOS_EMERGENCY"].map((type) => (
+              <button
+                key={type}
+                onClick={() => setTypeFilter(type)}
+                className={`px-2.5 py-1.5 rounded-lg font-bold whitespace-nowrap transition ${
+                  typeFilter === type
+                    ? "bg-amber-100 text-amber-900 border border-amber-300"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {type === "ALL" ? "All Types" : type.replace("_", " ")}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Table */}
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
@@ -267,7 +349,7 @@ export default function NotificationView({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-xs">
-              {notifications.map((notif) => {
+              {filteredNotifications.map((notif) => {
                 const badge = getBadgeForType(notif.type);
                 return (
                   <tr key={notif.id} className="hover:bg-slate-50/60 transition">

@@ -14,6 +14,9 @@ import {
   Mail,
   Users,
   Sparkles,
+  FileDown,
+  UserCheck,
+  CheckSquare,
 } from "lucide-react";
 import {
   ProfileData,
@@ -21,8 +24,11 @@ import {
   AppointmentData,
   CareCircleMemberData,
   LoveNoteData,
+  MedicationData,
+  VitalLogData,
 } from "@/types";
 import { formatTime } from "@/lib/utils";
+import DoctorSummaryModal from "./DoctorSummaryModal";
 
 interface FamilyViewProps {
   profile: ProfileData | null;
@@ -30,6 +36,8 @@ interface FamilyViewProps {
   appointments: AppointmentData[];
   careCircle: CareCircleMemberData[];
   loveNotes: LoveNoteData[];
+  medications?: MedicationData[];
+  vitals?: VitalLogData[];
   onSendLoveNote: (noteData: {
     senderName: string;
     senderRole: string;
@@ -45,6 +53,8 @@ export default function FamilyView({
   appointments,
   careCircle,
   loveNotes,
+  medications = [],
+  vitals = [],
   onSendLoveNote,
   onTriggerSOS,
 }: FamilyViewProps) {
@@ -53,6 +63,20 @@ export default function FamilyView({
   const [selectedEmoji, setSelectedEmoji] = useState("❤️");
   const [sendingNote, setSendingNote] = useState(false);
   const [noteSuccess, setNoteSuccess] = useState(false);
+  const [showDoctorSummary, setShowDoctorSummary] = useState(false);
+
+  // Care Circle Handover Tasks State
+  const [tasks, setTasks] = useState([
+    { id: 1, title: "Drive Nana to Geriatric Checkup (Dr. Campbell)", assignee: "Marcus Vance", date: "Nov 17", done: false },
+    { id: 2, title: "Check dressing & record morning blood pressure", assignee: "Nurse Elena", date: "Daily", done: true },
+    { id: 3, title: "Bring fresh fruit & accompany afternoon garden walk", assignee: "Chloe Vance", date: "Today", done: false },
+  ]);
+
+  const toggleTask = (id: number) => {
+    setTasks((prev) =>
+      prev.map((t) => (t.id === id ? { ...t, done: !t.done } : t))
+    );
+  };
 
   const totalDoses = doses.length;
   const takenDoses = doses.filter((d) => d.status === "TAKEN").length;
@@ -102,28 +126,39 @@ export default function FamilyView({
             </p>
           </div>
 
-          {/* Quick Adherence Gauge */}
-          <div className="bg-white/15 backdrop-blur p-4 rounded-2xl border border-white/20 flex items-center space-x-4 min-w-[220px]">
-            <div className="w-16 h-16 rounded-full border-4 border-emerald-300 flex items-center justify-center font-black text-xl text-white">
-              {adherenceRate}%
+          {/* Quick Adherence Gauge & Doctor Summary Action */}
+          <div className="flex flex-col sm:flex-row items-center gap-4">
+            <div className="bg-white/15 backdrop-blur p-4 rounded-2xl border border-white/20 flex items-center space-x-4 min-w-[210px]">
+              <div className="w-14 h-14 rounded-full border-4 border-emerald-300 flex items-center justify-center font-black text-lg text-white">
+                {adherenceRate}%
+              </div>
+              <div>
+                <p className="text-xs font-medium text-emerald-200">Today&apos;s Adherence</p>
+                <h4 className="text-sm font-bold text-white">
+                  {takenDoses} of {totalDoses} Taken
+                </h4>
+                <p className="text-[10px] text-emerald-200">
+                  {missedDoses > 0 ? `⚠️ ${missedDoses} missed dose alert` : "✓ Routine on track"}
+                </p>
+              </div>
             </div>
-            <div>
-              <p className="text-xs font-medium text-emerald-200">Today&apos;s Adherence</p>
-              <h4 className="text-base font-bold text-white">
-                {takenDoses} of {totalDoses} Taken
-              </h4>
-              <p className="text-[11px] text-emerald-200">
-                {missedDoses > 0 ? `⚠️ ${missedDoses} missed dose alert` : "✓ Routine on track"}
-              </p>
-            </div>
+
+            <button
+              onClick={() => setShowDoctorSummary(true)}
+              className="w-full sm:w-auto px-4 py-3 rounded-2xl bg-white text-emerald-950 hover:bg-emerald-50 font-bold text-xs shadow-lg transition flex items-center justify-center gap-2"
+            >
+              <FileDown className="w-4 h-4 text-emerald-700" />
+              <span>Print Doctor Summary</span>
+            </button>
           </div>
         </div>
       </div>
 
       {/* Real-time Dose Status & Send Love Note Side-by-Side */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* Left 2 Cols: Today's Live Care Timeline */}
+        {/* Left 2 Cols: Today's Live Care Timeline & Task Board */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Live Adherence Feed */}
           <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
             <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
               <div>
@@ -197,6 +232,54 @@ export default function FamilyView({
                       </p>
                     )}
                   </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Care Circle Shared Task Handover Board */}
+          <div className="bg-white rounded-3xl p-6 border border-slate-200 shadow-sm">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+                  <CheckSquare className="w-5 h-5 text-teal-600" />
+                  <span>Care Circle Handover &amp; Responsibility Tasks</span>
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Shared task assignments between Marcus, Chloe, and Nurse Elena
+                </p>
+              </div>
+            </div>
+
+            <div className="space-y-2 text-xs">
+              {tasks.map((task) => (
+                <div
+                  key={task.id}
+                  onClick={() => toggleTask(task.id)}
+                  className={`p-3.5 rounded-2xl border-2 cursor-pointer transition flex items-center justify-between gap-3 ${
+                    task.done ? "bg-slate-50 border-slate-200 text-slate-400" : "bg-teal-50/50 border-teal-200 text-slate-800"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <div
+                      className={`w-6 h-6 rounded-lg border-2 flex items-center justify-center font-bold ${
+                        task.done ? "bg-teal-600 border-teal-600 text-white" : "border-slate-300 bg-white"
+                      }`}
+                    >
+                      {task.done && "✓"}
+                    </div>
+                    <div>
+                      <p className={`font-bold ${task.done ? "line-through text-slate-400" : "text-slate-900"}`}>
+                        {task.title}
+                      </p>
+                      <p className="text-[11px] text-slate-500">
+                        Assigned to: <strong>{task.assignee}</strong> &bull; Due: {task.date}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-white border border-slate-200">
+                    {task.done ? "Done" : "Pending"}
+                  </span>
                 </div>
               ))}
             </div>
@@ -376,6 +459,17 @@ export default function FamilyView({
           </div>
         </div>
       </div>
+
+      {/* Doctor Summary Printable Modal */}
+      <DoctorSummaryModal
+        isOpen={showDoctorSummary}
+        onClose={() => setShowDoctorSummary(false)}
+        profile={profile}
+        medications={medications}
+        appointments={appointments}
+        vitals={vitals}
+        adherenceRate={adherenceRate}
+      />
     </div>
   );
 }

@@ -414,6 +414,8 @@ export default function Home() {
             appointments={appointments}
             careCircle={careCircle}
             loveNotes={loveNotes}
+            medications={medications}
+            vitals={vitals}
             onSendLoveNote={handleSendLoveNote}
             onTriggerSOS={() => setIsEmergencyModalOpen(true)}
           />
