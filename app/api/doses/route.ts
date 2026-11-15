@@ -6,9 +6,28 @@ export async function GET(request: Request) {
     const { searchParams } = new URL(request.url);
     const profileId = searchParams.get("profileId");
     const date = searchParams.get("date") || new Date().toISOString().split("T")[0];
+    const range = searchParams.get("range"); // e.g. "14d" for heatmap
 
     if (!profileId) {
       return NextResponse.json({ error: "Profile ID required" }, { status: 400 });
+    }
+
+    // Range query for weekly/monthly adherence heatmap
+    if (range === "14d") {
+      const fourteenDaysAgo = new Date();
+      fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
+      const minDateStr = fourteenDaysAgo.toISOString().split("T")[0];
+
+      const historicalDoses = await prisma.doseScheduleLog.findMany({
+        where: {
+          profileId,
+          scheduledDate: { gte: minDateStr },
+        },
+        include: { medication: true },
+        orderBy: { scheduledDate: "asc" },
+      });
+
+      return NextResponse.json(historicalDoses);
     }
 
     // 1. Fetch existing dose logs for the date
@@ -44,7 +63,6 @@ export async function GET(request: Request) {
             });
           }
         } catch {
-          // In case scheduleTimes was single string
           await prisma.doseScheduleLog.create({
             data: {
               profileId,
@@ -95,10 +113,10 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { id, status, takenBy, notes } = body;
+    const { id, status, action, snoozeMinutes, takenBy, notes } = body;
 
-    if (!id || !status) {
-      return NextResponse.json({ error: "Dose ID and status are required" }, { status: 400 });
+    if (!id) {
+      return NextResponse.json({ error: "Dose ID is required" }, { status: 400 });
     }
 
     const currentDose = await prisma.doseScheduleLog.findUnique({
@@ -110,10 +128,27 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Dose not found" }, { status: 404 });
     }
 
+    // Handle SNOOZE action
+    if (action === "SNOOZE") {
+      const minutes = Number(snoozeMinutes) || 15;
+      const snoozeUntil = new Date(Date.now() + minutes * 60 * 1000);
+
+      const snoozed = await prisma.doseScheduleLog.update({
+        where: { id },
+        data: {
+          status: "SNOOZED",
+          snoozedUntil: snoozeUntil,
+          notes: `Snoozed for ${minutes} minutes until ${snoozeUntil.toLocaleTimeString()}`,
+        },
+        include: { medication: true },
+      });
+      return NextResponse.json(snoozed);
+    }
+
     const updated = await prisma.doseScheduleLog.update({
       where: { id },
       data: {
-        status,
+        status: status || "TAKEN",
         takenAt: status === "TAKEN" ? new Date() : null,
         takenBy: status === "TAKEN" ? takenBy || "Self" : null,
         notes: notes !== undefined ? notes : currentDose.notes,

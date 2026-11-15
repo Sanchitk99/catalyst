@@ -8,6 +8,7 @@ import FamilyView from "@/components/FamilyView";
 import NotificationView from "@/components/NotificationView";
 import PasscodeModal from "@/components/PasscodeModal";
 import EmergencyModal from "@/components/EmergencyModal";
+import IceMedicalCardModal from "@/components/IceMedicalCardModal";
 import {
   ProfileData,
   UserRole,
@@ -23,6 +24,7 @@ import {
 
 export default function Home() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
+  const [allProfiles, setAllProfiles] = useState<ProfileData[]>([]);
   const [activeRole, setActiveRole] = useState<UserRole>("SENIOR");
   const [activeTab, setActiveTab] = useState<"SENIOR" | "CARETAKER" | "FAMILY" | "NOTIFICATIONS">("SENIOR");
 
@@ -34,6 +36,7 @@ export default function Home() {
   // Modals
   const [isPasscodeModalOpen, setIsPasscodeModalOpen] = useState(false);
   const [isEmergencyModalOpen, setIsEmergencyModalOpen] = useState(false);
+  const [isIceModalOpen, setIsIceModalOpen] = useState(false);
 
   // Data states
   const [doses, setDoses] = useState<DoseScheduleData[]>([]);
@@ -52,7 +55,9 @@ export default function Home() {
       setLoading(true);
       const res = await fetch("/api/profiles");
       const profiles = await res.json();
-      const currentProfile = Array.isArray(profiles) ? profiles[0] : profiles;
+      const list = Array.isArray(profiles) ? profiles : [profiles];
+      setAllProfiles(list);
+      const currentProfile = list[0];
 
       if (currentProfile) {
         setProfile(currentProfile);
@@ -73,6 +78,39 @@ export default function Home() {
       setLoading(false);
     }
   }, []);
+
+  const handleSelectProfile = async (profileId: string) => {
+    const selected = allProfiles.find((p) => p.id === profileId);
+    if (selected) {
+      setProfile(selected);
+      setLoading(true);
+      try {
+        await Promise.all([
+          fetchDoses(selected.id),
+          fetchMedications(selected.id),
+          fetchAppointments(selected.id),
+          fetchCareCircle(selected.id),
+          fetchRoutinesAndVitals(selected.id),
+          fetchNotifications(selected.id),
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const handleSnoozeDose = async (doseId: string, minutes: number = 15) => {
+    try {
+      await fetch("/api/doses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: doseId, action: "SNOOZE", snoozeMinutes: minutes }),
+      });
+      if (profile) await fetchDoses(profile.id);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   useEffect(() => {
     fetchProfileAndData();
@@ -353,6 +391,8 @@ export default function Home() {
       {/* Top Universal Header */}
       <Header
         profile={profile}
+        allProfiles={allProfiles}
+        onSelectProfile={handleSelectProfile}
         activeRole={activeRole}
         onOpenPasscodeModal={() => setIsPasscodeModalOpen(true)}
         activeTab={activeTab}
@@ -364,6 +404,7 @@ export default function Home() {
         voiceEnabled={voiceEnabled}
         setVoiceEnabled={setVoiceEnabled}
         onTriggerSOS={() => setIsEmergencyModalOpen(true)}
+        onOpenIceCard={() => setIsIceModalOpen(true)}
       />
 
       {/* Main View Area */}
@@ -375,6 +416,7 @@ export default function Home() {
             routines={routines}
             loveNotes={loveNotes}
             onTakeDose={handleTakeDose}
+            onSnoozeDose={handleSnoozeDose}
             onToggleRoutine={handleToggleRoutine}
             onTriggerSOS={() => setIsEmergencyModalOpen(true)}
             voiceEnabled={voiceEnabled}
@@ -449,6 +491,14 @@ export default function Home() {
         onClose={() => setIsEmergencyModalOpen(false)}
         profile={profile}
         onConfirmSOS={handleTriggerSOS}
+      />
+
+      {/* Emergency ICE Medical Card Modal */}
+      <IceMedicalCardModal
+        isOpen={isIceModalOpen}
+        onClose={() => setIsIceModalOpen(false)}
+        profile={profile}
+        medications={medications}
       />
     </div>
   );

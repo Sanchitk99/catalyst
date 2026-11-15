@@ -2,7 +2,7 @@ const { PrismaClient } = require("@prisma/client");
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("Seeding CareRing elderly care database...");
+  console.log("Seeding CareRing elderly care database with multi-profile and historical adherence data...");
 
   // Clean existing data for clean idempotent run
   await prisma.notificationLog.deleteMany({});
@@ -15,10 +15,20 @@ async function main() {
   await prisma.careCircleMember.deleteMany({});
   await prisma.elderlyProfile.deleteMany({});
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const today = new Date();
+  const todayStr = today.toISOString().split("T")[0];
 
-  // 1. Create Eleanor's Profile
-  const profile = await prisma.elderlyProfile.create({
+  // Helper for generating dates relative to today
+  const getDateStr = (offsetDays) => {
+    const d = new Date(today);
+    d.setDate(d.getDate() + offsetDays);
+    return d.toISOString().split("T")[0];
+  };
+
+  // ==========================================
+  // 1. Profile 1: Eleanor Vance ("Nana Eleanor", 78)
+  // ==========================================
+  const eleanor = await prisma.elderlyProfile.create({
     data: {
       fullName: "Eleanor Vance",
       preferredName: "Nana Eleanor",
@@ -40,58 +50,52 @@ async function main() {
     },
   });
 
-  console.log(`Created Elderly Profile: ${profile.fullName} (${profile.id})`);
-
-  // 2. Create Care Circle Members
-  const marcus = await prisma.careCircleMember.create({
-    data: {
-      profileId: profile.id,
-      name: "Marcus Vance",
-      role: "FAMILY",
-      relation: "Son (Primary Contact)",
-      email: "marcus.vance@example.com",
-      phone: "+1 (555) 441-2099",
-      notifyMissedDoses: true,
-      notifyUpcomingDoses: false,
-      notifyAppointments: true,
-      notifyEmergencySOS: true,
-    },
+  // Care Circle for Eleanor
+  await prisma.careCircleMember.createMany({
+    data: [
+      {
+        profileId: eleanor.id,
+        name: "Marcus Vance",
+        role: "FAMILY",
+        relation: "Son (Primary Contact)",
+        email: "marcus.vance@example.com",
+        phone: "+1 (555) 441-2099",
+        notifyMissedDoses: true,
+        notifyUpcomingDoses: false,
+        notifyAppointments: true,
+        notifyEmergencySOS: true,
+      },
+      {
+        profileId: eleanor.id,
+        name: "Chloe Vance",
+        role: "FAMILY",
+        relation: "Granddaughter",
+        email: "chloe.vance@example.com",
+        phone: "+1 (555) 332-9011",
+        notifyMissedDoses: true,
+        notifyUpcomingDoses: false,
+        notifyAppointments: false,
+        notifyEmergencySOS: true,
+      },
+      {
+        profileId: eleanor.id,
+        name: "Elena Gomez, RN",
+        role: "CARETAKER",
+        relation: "Visiting Home Nurse",
+        email: "nurse.elena@caregivers-network.org",
+        phone: "+1 (555) 778-4321",
+        notifyMissedDoses: true,
+        notifyUpcomingDoses: true,
+        notifyAppointments: true,
+        notifyEmergencySOS: true,
+      },
+    ],
   });
 
-  const chloe = await prisma.careCircleMember.create({
-    data: {
-      profileId: profile.id,
-      name: "Chloe Vance",
-      role: "FAMILY",
-      relation: "Granddaughter",
-      email: "chloe.vance@example.com",
-      phone: "+1 (555) 332-9011",
-      notifyMissedDoses: true,
-      notifyUpcomingDoses: false,
-      notifyAppointments: false,
-      notifyEmergencySOS: true,
-    },
-  });
-
-  const nurseElena = await prisma.careCircleMember.create({
-    data: {
-      profileId: profile.id,
-      name: "Elena Gomez, RN",
-      role: "CARETAKER",
-      relation: "Visiting Home Nurse",
-      email: "nurse.elena@caregivers-network.org",
-      phone: "+1 (555) 778-4321",
-      notifyMissedDoses: true,
-      notifyUpcomingDoses: true,
-      notifyAppointments: true,
-      notifyEmergencySOS: true,
-    },
-  });
-
-  // 3. Create Core Medications
+  // Medications for Eleanor
   const metformin = await prisma.medication.create({
     data: {
-      profileId: profile.id,
+      profileId: eleanor.id,
       name: "Metformin HCl",
       brandName: "Glucophage",
       dosage: "500 mg",
@@ -114,14 +118,14 @@ async function main() {
 
   const lisinopril = await prisma.medication.create({
     data: {
-      profileId: profile.id,
+      profileId: eleanor.id,
       name: "Lisinopril",
       brandName: "Prinivil",
       dosage: "10 mg",
       form: "Tablet",
       color: "Pink",
       shape: "Round",
-      instructions: "Take once daily in the morning with or without food. Helps maintain steady blood pressure.",
+      instructions: "Take once daily in the morning with water. Helps maintain steady blood pressure.",
       purpose: "Hypertension / Blood Pressure Support",
       prescribingDoctor: "Dr. Arthur Campbell",
       totalPills: 30,
@@ -137,7 +141,7 @@ async function main() {
 
   const atorvastatin = await prisma.medication.create({
     data: {
-      profileId: profile.id,
+      profileId: eleanor.id,
       name: "Atorvastatin",
       brandName: "Lipitor",
       dosage: "20 mg",
@@ -160,7 +164,7 @@ async function main() {
 
   const calcium = await prisma.medication.create({
     data: {
-      profileId: profile.id,
+      profileId: eleanor.id,
       name: "Calcium Citrate + Vit D3",
       brandName: "Citracal",
       dosage: "600 mg / 400 IU",
@@ -181,11 +185,79 @@ async function main() {
     },
   });
 
-  // 4. Create Dose Schedule Logs for Today
-  // 08:00 doses: Taken
+  // Generate 14 Days of Historical Doses for Eleanor for the Adherence Heatmap!
+  for (let offset = -13; offset <= -1; offset++) {
+    const dayStr = getDateStr(offset);
+    // 08:00 Lisinopril
+    await prisma.doseScheduleLog.create({
+      data: {
+        profileId: eleanor.id,
+        medicationId: lisinopril.id,
+        scheduledDate: dayStr,
+        scheduledTime: "08:00",
+        status: "TAKEN",
+        takenAt: new Date(new Date().setHours(8, 15 + Math.floor(Math.random() * 15))),
+        takenBy: "Eleanor (Self)",
+      },
+    });
+
+    // 08:00 Metformin
+    await prisma.doseScheduleLog.create({
+      data: {
+        profileId: eleanor.id,
+        medicationId: metformin.id,
+        scheduledDate: dayStr,
+        scheduledTime: "08:00",
+        status: "TAKEN",
+        takenAt: new Date(new Date().setHours(8, 16 + Math.floor(Math.random() * 15))),
+        takenBy: "Eleanor (Self)",
+      },
+    });
+
+    // 13:00 Calcium (mostly taken, occasional snooze)
+    await prisma.doseScheduleLog.create({
+      data: {
+        profileId: eleanor.id,
+        medicationId: calcium.id,
+        scheduledDate: dayStr,
+        scheduledTime: "13:00",
+        status: offset === -4 ? "MISSED" : "TAKEN",
+        takenAt: offset === -4 ? null : new Date(new Date().setHours(13, 20)),
+        takenBy: offset === -4 ? null : "Eleanor (Self)",
+      },
+    });
+
+    // 19:30 Metformin
+    await prisma.doseScheduleLog.create({
+      data: {
+        profileId: eleanor.id,
+        medicationId: metformin.id,
+        scheduledDate: dayStr,
+        scheduledTime: "19:30",
+        status: "TAKEN",
+        takenAt: new Date(new Date().setHours(19, 45)),
+        takenBy: "Eleanor (Self)",
+      },
+    });
+
+    // 21:00 Atorvastatin
+    await prisma.doseScheduleLog.create({
+      data: {
+        profileId: eleanor.id,
+        medicationId: atorvastatin.id,
+        scheduledDate: dayStr,
+        scheduledTime: "21:00",
+        status: offset === -8 ? "MISSED" : "TAKEN",
+        takenAt: offset === -8 ? null : new Date(new Date().setHours(21, 10)),
+        takenBy: offset === -8 ? null : "Eleanor (Self)",
+      },
+    });
+  }
+
+  // Today's Doses for Eleanor
   await prisma.doseScheduleLog.create({
     data: {
-      profileId: profile.id,
+      profileId: eleanor.id,
       medicationId: lisinopril.id,
       scheduledDate: todayStr,
       scheduledTime: "08:00",
@@ -198,7 +270,7 @@ async function main() {
 
   await prisma.doseScheduleLog.create({
     data: {
-      profileId: profile.id,
+      profileId: eleanor.id,
       medicationId: metformin.id,
       scheduledDate: todayStr,
       scheduledTime: "08:00",
@@ -209,10 +281,9 @@ async function main() {
     },
   });
 
-  // 13:00 dose: Pending
   await prisma.doseScheduleLog.create({
     data: {
-      profileId: profile.id,
+      profileId: eleanor.id,
       medicationId: calcium.id,
       scheduledDate: todayStr,
       scheduledTime: "13:00",
@@ -220,10 +291,9 @@ async function main() {
     },
   });
 
-  // 19:30 dose: Pending
   await prisma.doseScheduleLog.create({
     data: {
-      profileId: profile.id,
+      profileId: eleanor.id,
       medicationId: metformin.id,
       scheduledDate: todayStr,
       scheduledTime: "19:30",
@@ -231,10 +301,9 @@ async function main() {
     },
   });
 
-  // 21:00 dose: Pending
   await prisma.doseScheduleLog.create({
     data: {
-      profileId: profile.id,
+      profileId: eleanor.id,
       medicationId: atorvastatin.id,
       scheduledDate: todayStr,
       scheduledTime: "21:00",
@@ -242,7 +311,7 @@ async function main() {
     },
   });
 
-  // 5. Create Doctor Appointments
+  // Eleanor's Appointments
   const inTwoDays = new Date();
   inTwoDays.setDate(inTwoDays.getDate() + 2);
   inTwoDays.setHours(10, 30, 0, 0);
@@ -251,47 +320,46 @@ async function main() {
   inTenDays.setDate(inTenDays.getDate() + 10);
   inTenDays.setHours(14, 0, 0, 0);
 
-  await prisma.appointment.create({
-    data: {
-      profileId: profile.id,
-      doctorName: "Dr. Arthur Campbell",
-      specialty: "Internal Medicine & Geriatrics",
-      clinicName: "St. Jude Medical Pavilion, Suite 305",
-      address: "1024 Healthcare Parkway, Seattle, WA",
-      contactPhone: "+1 (555) 234-8901",
-      appointmentDate: inTwoDays,
-      status: "UPCOMING",
-      purpose: "6-Month Comprehensive Geriatric Wellness & Blood Panel Review",
-      preVisitNotes: "Fasting required for 8 hours prior. Remember to bring daily blood pressure journal.",
-      companionRequired: true,
-      companionName: "Marcus Vance (Son)",
-      transportArranged: true,
-    },
+  await prisma.appointment.createMany({
+    data: [
+      {
+        profileId: eleanor.id,
+        doctorName: "Dr. Arthur Campbell",
+        specialty: "Internal Medicine & Geriatrics",
+        clinicName: "St. Jude Medical Pavilion, Suite 305",
+        address: "1024 Healthcare Parkway, Seattle, WA",
+        contactPhone: "+1 (555) 234-8901",
+        appointmentDate: inTwoDays,
+        status: "UPCOMING",
+        purpose: "6-Month Comprehensive Geriatric Wellness & Blood Panel Review",
+        preVisitNotes: "Fasting required for 8 hours prior. Remember to bring daily blood pressure journal.",
+        companionRequired: true,
+        companionName: "Marcus Vance (Son)",
+        transportArranged: true,
+      },
+      {
+        profileId: eleanor.id,
+        doctorName: "Dr. Rebecca Weiss",
+        specialty: "Ophthalmology & Retinal Care",
+        clinicName: "ClearVision Eye Institute",
+        address: "550 West Mercer St, Seattle, WA",
+        contactPhone: "+1 (555) 880-9944",
+        appointmentDate: inTenDays,
+        status: "UPCOMING",
+        purpose: "Annual Glaucoma Pressure Testing & Lens Check",
+        preVisitNotes: "Pupil dilation drops will be administered. Sunglasses recommended for the ride home.",
+        companionRequired: true,
+        companionName: "Chloe Vance (Granddaughter)",
+        transportArranged: false,
+      },
+    ],
   });
 
-  await prisma.appointment.create({
-    data: {
-      profileId: profile.id,
-      doctorName: "Dr. Rebecca Weiss",
-      specialty: "Ophthalmology & Retinal Care",
-      clinicName: "ClearVision Eye Institute",
-      address: "550 West Mercer St, Seattle, WA",
-      contactPhone: "+1 (555) 880-9944",
-      appointmentDate: inTenDays,
-      status: "UPCOMING",
-      purpose: "Annual Glaucoma Pressure Testing & Lens Check",
-      preVisitNotes: "Pupil dilation drops will be administered. Sunglasses recommended for the ride home.",
-      companionRequired: true,
-      companionName: "Chloe Vance (Granddaughter)",
-      transportArranged: false,
-    },
-  });
-
-  // 6. Create Daily Healthcare Routines
+  // Eleanor's Healthcare Routines
   await prisma.healthcareRoutine.createMany({
     data: [
       {
-        profileId: profile.id,
+        profileId: eleanor.id,
         title: "Morning Blood Pressure & Pulse Log",
         category: "VITAL_CHECK",
         targetTime: "08:30",
@@ -301,7 +369,7 @@ async function main() {
         lastCompletedAt: new Date(new Date().setHours(8, 32, 0, 0)),
       },
       {
-        profileId: profile.id,
+        profileId: eleanor.id,
         title: "Midday Hydration & Herbal Tea (500 ml)",
         category: "HYDRATION",
         targetTime: "13:30",
@@ -310,7 +378,7 @@ async function main() {
         completedToday: false,
       },
       {
-        profileId: profile.id,
+        profileId: eleanor.id,
         title: "Gentle 15-Minute Garden Walk",
         category: "EXERCISE",
         targetTime: "16:00",
@@ -319,7 +387,7 @@ async function main() {
         completedToday: false,
       },
       {
-        profileId: profile.id,
+        profileId: eleanor.id,
         title: "Evening Foot & Ankle Circulation Inspection",
         category: "PHYSIOTHERAPY",
         targetTime: "20:30",
@@ -330,11 +398,11 @@ async function main() {
     ],
   });
 
-  // 7. Create Vital Logs
+  // Eleanor's Vitals
   await prisma.vitalLog.createMany({
     data: [
       {
-        profileId: profile.id,
+        profileId: eleanor.id,
         type: "BLOOD_PRESSURE",
         value: "122/80",
         unit: "mmHg",
@@ -344,7 +412,7 @@ async function main() {
         notes: "Within normal target range. Pulse 72 bpm.",
       },
       {
-        profileId: profile.id,
+        profileId: eleanor.id,
         type: "BLOOD_SUGAR",
         value: "108",
         unit: "mg/dL",
@@ -354,7 +422,7 @@ async function main() {
         notes: "Fasting morning glucose check.",
       },
       {
-        profileId: profile.id,
+        profileId: eleanor.id,
         type: "HEART_RATE",
         value: "72",
         unit: "bpm",
@@ -365,11 +433,11 @@ async function main() {
     ],
   });
 
-  // 8. Create Love Notes / Care Circle Messages
+  // Eleanor's Love Notes
   await prisma.loveNote.createMany({
     data: [
       {
-        profileId: profile.id,
+        profileId: eleanor.id,
         senderName: "Marcus Vance (Son)",
         senderRole: "FAMILY",
         message: "Good morning Mom! I checked the dashboard and saw you took your morning medicine. Elena is stopping by around 2 PM. Love you!",
@@ -377,39 +445,189 @@ async function main() {
         isRead: false,
       },
       {
-        profileId: profile.id,
+        profileId: eleanor.id,
         senderName: "Chloe (Granddaughter)",
         senderRole: "FAMILY",
         message: "Nana, don't forget your garden walk today! The roses in the front yard look magnificent! 🌹",
         mediaEmoji: "🌸",
         isRead: false,
       },
+    ],
+  });
+
+  // ==========================================
+  // 2. Profile 2: Robert Chen ("Grandpa Robert", 82)
+  // ==========================================
+  const robert = await prisma.elderlyProfile.create({
+    data: {
+      fullName: "Robert Chen",
+      preferredName: "Grandpa Robert",
+      age: 82,
+      gender: "Male",
+      avatarUrl: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80",
+      bloodType: "B+",
+      allergies: "Codeine, NSAIDs (Aspirin sensitivity)",
+      emergencyPhone: "+1 (555) 911-3344",
+      primaryDoctor: "Dr. Evelyn Ross, MD (Cardiology)",
+      doctorPhone: "+1 (555) 672-8811",
+      hospitalPreference: "Swedish Medical Center - Cherry Hill",
+      elderlyPasscode: "5678",
+      familyPasscode: "8765",
+      caretakerPasscode: "9999",
+      accessibilityVoice: true,
+      highContrast: false,
+      fontSizeMode: "large",
+    },
+  });
+
+  // Care Circle for Robert
+  await prisma.careCircleMember.createMany({
+    data: [
       {
-        profileId: profile.id,
-        senderName: "Elena Gomez, RN",
-        senderRole: "CARETAKER",
-        message: "Great job keeping your morning BP below 125/80 Eleanor. See you this afternoon for vitals check!",
-        mediaEmoji: "⭐",
-        isRead: false,
+        profileId: robert.id,
+        name: "David Chen",
+        role: "FAMILY",
+        relation: "Son (Power of Attorney)",
+        email: "david.chen@example.com",
+        phone: "+1 (555) 723-9900",
+        notifyMissedDoses: true,
+        notifyUpcomingDoses: true,
+        notifyAppointments: true,
+        notifyEmergencySOS: true,
+      },
+      {
+        profileId: robert.id,
+        name: "Nurse Elena Gomez, RN",
+        role: "CARETAKER",
+        relation: "Home Visiting Nurse",
+        email: "nurse.elena@caregivers-network.org",
+        phone: "+1 (555) 778-4321",
+        notifyMissedDoses: true,
+        notifyUpcomingDoses: false,
+        notifyAppointments: true,
+        notifyEmergencySOS: true,
       },
     ],
   });
 
-  // 9. Create a Sample Notification Log
-  await prisma.notificationLog.create({
+  // Medications for Robert
+  const carvedilol = await prisma.medication.create({
     data: {
-      profileId: profile.id,
-      recipientEmail: "marcus.vance@example.com",
-      recipientName: "Marcus Vance",
-      type: "UPCOMING_DOSE",
-      subject: "⏰ Upcoming Medication Dose: Lisinopril at 08:00",
-      content: "CareRing reminder: Eleanor's morning medication is scheduled for 08:00.",
-      status: "SENT",
-      etherealUrl: "https://ethereal.email/message/sample-test-id",
+      profileId: robert.id,
+      name: "Carvedilol",
+      brandName: "Coreg",
+      dosage: "12.5 mg",
+      form: "Tablet",
+      color: "White",
+      shape: "Round",
+      instructions: "Take with food twice daily for heart health. Avoid sudden standing up.",
+      purpose: "Congestive Heart Support & Rate Control",
+      prescribingDoctor: "Dr. Evelyn Ross",
+      totalPills: 60,
+      remainingPills: 18,
+      refillThreshold: 10,
+      refillPharmacy: "CVS Pharmacy #882",
+      pharmacyPhone: "+1 (555) 420-1122",
+      active: true,
+      scheduleTimes: JSON.stringify(["09:00", "20:00"]),
+      scheduleType: "DAILY",
     },
   });
 
-  console.log("Seeding complete! Database initialized with complete senior care profile.");
+  const furosemide = await prisma.medication.create({
+    data: {
+      profileId: robert.id,
+      name: "Furosemide",
+      brandName: "Lasix",
+      dosage: "20 mg",
+      form: "Tablet",
+      color: "White",
+      shape: "Round",
+      instructions: "Take early in morning with banana or potassium. Promotes fluid balance.",
+      purpose: "Diuretic & Edema Prevention",
+      prescribingDoctor: "Dr. Evelyn Ross",
+      totalPills: 30,
+      remainingPills: 5,
+      refillThreshold: 7,
+      refillPharmacy: "CVS Pharmacy #882",
+      pharmacyPhone: "+1 (555) 420-1122",
+      active: true,
+      scheduleTimes: JSON.stringify(["09:00"]),
+      scheduleType: "DAILY",
+    },
+  });
+
+  // Today's Doses for Robert
+  await prisma.doseScheduleLog.createMany({
+    data: [
+      {
+        profileId: robert.id,
+        medicationId: carvedilol.id,
+        scheduledDate: todayStr,
+        scheduledTime: "09:00",
+        status: "TAKEN",
+        takenAt: new Date(new Date().setHours(9, 15)),
+        takenBy: "Robert (Self)",
+      },
+      {
+        profileId: robert.id,
+        medicationId: furosemide.id,
+        scheduledDate: todayStr,
+        scheduledTime: "09:00",
+        status: "TAKEN",
+        takenAt: new Date(new Date().setHours(9, 15)),
+        takenBy: "Robert (Self)",
+      },
+      {
+        profileId: robert.id,
+        medicationId: carvedilol.id,
+        scheduledDate: todayStr,
+        scheduledTime: "20:00",
+        status: "PENDING",
+      },
+    ],
+  });
+
+  // Vitals for Robert
+  await prisma.vitalLog.createMany({
+    data: [
+      {
+        profileId: robert.id,
+        type: "BLOOD_PRESSURE",
+        value: "118/74",
+        unit: "mmHg",
+        measuredAt: new Date(),
+        measuredBy: "Nurse Elena",
+        status: "NORMAL",
+        notes: "Good fluid balance, no peripheral edema.",
+      },
+      {
+        profileId: robert.id,
+        type: "WEIGHT",
+        value: "168.5",
+        unit: "lbs",
+        measuredAt: new Date(),
+        measuredBy: "Nurse Elena",
+        status: "NORMAL",
+        notes: "Daily dry weight check.",
+      },
+    ],
+  });
+
+  // Notification Log for Robert
+  await prisma.notificationLog.create({
+    data: {
+      profileId: robert.id,
+      recipientEmail: "david.chen@example.com",
+      recipientName: "David Chen",
+      type: "REFILL_ALERT",
+      subject: "⚠️ Low Prescription Inventory: Furosemide (5 pills left)",
+      content: "CareRing Refill Alert: Robert Chen has 5 pills remaining for Furosemide 20mg.",
+      status: "SENT",
+    },
+  });
+
+  console.log("Seeding complete! Initialized Eleanor Vance and Robert Chen with rich clinical records.");
 }
 
 main()

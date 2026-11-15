@@ -29,12 +29,15 @@ import {
 } from "@/lib/audioHelper";
 import { formatTime, getDoseCategory } from "@/lib/utils";
 
+import AdherenceHeatmap from "./AdherenceHeatmap";
+
 interface SeniorViewProps {
   profile: ProfileData | null;
   doses: DoseScheduleData[];
   routines: HealthcareRoutineData[];
   loveNotes: LoveNoteData[];
   onTakeDose: (doseId: string) => Promise<void>;
+  onSnoozeDose?: (doseId: string, minutes: number) => Promise<void>;
   onToggleRoutine: (routineId: string, currentStatus: boolean) => Promise<void>;
   onTriggerSOS: () => void;
   voiceEnabled: boolean;
@@ -46,6 +49,7 @@ export default function SeniorView({
   routines,
   loveNotes,
   onTakeDose,
+  onSnoozeDose,
   onToggleRoutine,
   onTriggerSOS,
   voiceEnabled,
@@ -53,6 +57,24 @@ export default function SeniorView({
   const [takingDoseId, setTakingDoseId] = useState<string | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [voiceTranscript, setVoiceTranscript] = useState<string | null>(null);
+
+  const handleSnooze = async (doseId: string, minutes: number = 15) => {
+    try {
+      if (onSnoozeDose) {
+        await onSnoozeDose(doseId, minutes);
+      } else {
+        await fetch("/api/doses", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: doseId, action: "SNOOZE", snoozeMinutes: minutes }),
+        });
+      }
+      playSuccessChime();
+      speakText(`Snoozed for ${minutes} minutes. We'll remind you then, Nana.`);
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
   // Wellness State
   const [selectedMood, setSelectedMood] = useState<string>("GOOD");
@@ -524,20 +546,30 @@ export default function SeniorView({
                               </span>
                             </div>
                           ) : (
-                            <button
-                              onClick={() => handleDoseClick(dose)}
-                              disabled={takingDoseId === dose.id}
-                              className={`w-full py-3.5 px-4 rounded-xl font-bold text-base shadow-md transition transform active:scale-98 flex items-center justify-center gap-2 ${
-                                isMissed
-                                  ? "bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/30"
-                                  : "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/30"
-                              }`}
-                            >
-                              <CheckCircle className="w-5 h-5" />
-                              <span>
-                                {isMissed ? "Take Overdue Dose Now" : "I Took This Medicine"}
-                              </span>
-                            </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleDoseClick(dose)}
+                                disabled={takingDoseId === dose.id}
+                                className={`flex-1 py-3.5 px-4 rounded-xl font-bold text-base shadow-md transition transform active:scale-98 flex items-center justify-center gap-2 ${
+                                  isMissed
+                                    ? "bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/30"
+                                    : "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-600/30"
+                                }`}
+                              >
+                                <CheckCircle className="w-5 h-5" />
+                                <span>
+                                  {isMissed ? "Take Overdue Dose" : "I Took This"}
+                                </span>
+                              </button>
+
+                              <button
+                                onClick={() => handleSnooze(dose.id, 15)}
+                                className="px-3 py-3.5 rounded-xl border border-slate-300 bg-white hover:bg-slate-100 text-slate-700 font-bold text-xs shadow-sm transition"
+                                title="Snooze reminder for 15 minutes"
+                              >
+                                ⏱️ 15m
+                              </button>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -600,6 +632,9 @@ export default function SeniorView({
           ))}
         </div>
       </div>
+
+      {/* 14-Day Adherence Heatmap & Streak Tracker */}
+      {profile && <AdherenceHeatmap profileId={profile.id} />}
 
       {/* Emergency Assistance Footer Card */}
       <div className="bg-rose-50 border-2 border-rose-200 rounded-3xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
